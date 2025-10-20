@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SihmaSi - Advanced Metadata Extraction Tool
-Extract metadata from images and videos
+SihmaSi - Enhanced GPS Detection Version
+Debugging tool to see ALL GPS-related fields
 """
 
 import sys
@@ -33,7 +33,7 @@ def print_banner():
 ╚══════╝╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚═╝
 {RESET}
 {CYAN}        Advanced Metadata Extraction Tool{RESET}
-{YELLOW}              For Images & Videos{RESET}
+{YELLOW}         GPS Detection Enhanced Version{RESET}
 {MAGENTA}═══════════════════════════════════════════════════{RESET}
 """
     print(banner)
@@ -55,7 +55,7 @@ def check_dependencies():
     return True
 
 def get_file_hash(file_path):
-    """Get MD5 hash of file to verify it's unique"""
+    """Get MD5 hash of file"""
     hash_md5 = hashlib.md5()
     try:
         with open(file_path, "rb") as f:
@@ -66,7 +66,7 @@ def get_file_hash(file_path):
         return f"Error: {e}"
 
 def extract_metadata_detailed(file_path):
-    """Extract ALL metadata using exiftool with maximum verbosity"""
+    """Extract ALL metadata using exiftool"""
     if not os.path.exists(file_path):
         print(f"{RED}[!] Error: File not found - {file_path}{RESET}")
         return None
@@ -74,7 +74,6 @@ def extract_metadata_detailed(file_path):
     try:
         abs_path = os.path.abspath(file_path)
         
-        # Extract ALL metadata including binary data, duplicates, and unknown tags
         result = subprocess.run(
             ['exiftool', '-a', '-u', '-g1', '-s', '-n', '-ee', '-G1', abs_path],
             capture_output=True,
@@ -105,6 +104,97 @@ def get_file_info(file_path):
         'filename': os.path.basename(abs_path)
     }
 
+def debug_gps_fields(metadata):
+    """Debug: Show ALL fields that contain 'gps' (case-insensitive)"""
+    print(f"\n{YELLOW}{BOLD}[DEBUG] GPS Field Detection:{RESET}")
+    print(f"{YELLOW}Searching for ANY field containing 'gps'...{RESET}\n")
+    
+    gps_fields = []
+    if metadata:
+        for line in metadata.split('\n'):
+            if 'gps' in line.lower() and line.strip():
+                gps_fields.append(line)
+    
+    if gps_fields:
+        print(f"{GREEN}Found {len(gps_fields)} GPS-related fields:{RESET}")
+        for field in gps_fields:
+            print(f"  {GREEN}✓{RESET} {field}")
+    else:
+        print(f"{RED}✗ No GPS fields found in this file{RESET}")
+        print(f"{YELLOW}This means:{RESET}")
+        print(f"  • The device didn't have GPS enabled when photo was taken")
+        print(f"  • GPS data was stripped during editing/sharing")
+        print(f"  • The file format doesn't support GPS metadata")
+    
+    return gps_fields
+
+def extract_critical_info(metadata):
+    """Extract GPS and other critical metadata - ENHANCED VERSION"""
+    critical = {
+        'gps': {},
+        'camera': {},
+        'datetime': {},
+        'software': {},
+        'owner': {}
+    }
+    
+    if not metadata:
+        return critical
+    
+    for line in metadata.split('\n'):
+        if ':' not in line:
+            continue
+        
+        line_lower = line.lower()
+        
+        # Split on FIRST colon only to handle values with colons
+        parts = line.split(':', 1)
+        if len(parts) != 2:
+            continue
+            
+        key = parts[0].strip()
+        value = parts[1].strip()
+        
+        # More flexible GPS extraction - catch ANY gps field
+        if 'gps' in line_lower:
+            # Store every GPS field we find
+            field_name = key.split()[-1] if ' ' in key else key
+            critical['gps'][field_name] = value
+        
+        # Camera info
+        if 'make' in line_lower and 'model' not in line_lower:
+            critical['camera']['make'] = value
+        elif 'model' in line_lower and ('camera' in line_lower or 'make' not in line_lower):
+            critical['camera']['model'] = value
+        elif 'lens' in line_lower:
+            critical['camera']['lens'] = value
+        elif 'serialnumber' in line_lower:
+            critical['camera']['serial'] = value
+            
+        # DateTime info
+        if 'datetimeoriginal' in line_lower:
+            critical['datetime']['original'] = value
+        elif 'createdate' in line_lower:
+            critical['datetime']['created'] = value
+        elif 'modifydate' in line_lower:
+            critical['datetime']['modified'] = value
+            
+        # Software info
+        if 'software' in line_lower and 'version' not in line_lower:
+            critical['software']['software'] = value
+        elif 'creatortool' in line_lower:
+            critical['software']['creator'] = value
+            
+        # Owner info
+        if ('artist' in line_lower or 'creator' in line_lower) and 'tool' not in line_lower:
+            critical['owner']['artist'] = value
+        elif 'copyright' in line_lower:
+            critical['owner']['copyright'] = value
+        elif 'ownername' in line_lower:
+            critical['owner']['owner'] = value
+    
+    return critical
+
 def organize_metadata(metadata):
     """Organize metadata into categories"""
     categories = {
@@ -129,7 +219,6 @@ def organize_metadata(metadata):
             
         line_lower = line.lower()
         
-        # Categorize based on tag group or content
         if 'gps' in line_lower:
             categories['GPS'].append(line)
         elif any(x in line_lower for x in ['camera', 'lens', 'flash', 'focallength', 'aperture', 'shutterspeed', 'iso']):
@@ -153,81 +242,8 @@ def organize_metadata(metadata):
     
     return categories
 
-def extract_critical_info(metadata):
-    """Extract most important metadata fields"""
-    critical = {
-        'gps': {},
-        'camera': {},
-        'datetime': {},
-        'software': {},
-        'owner': {}
-    }
-    
-    if not metadata:
-        return critical
-    
-    for line in metadata.split('\n'):
-        if ':' not in line:
-            continue
-        
-        line_lower = line.lower()
-        parts = line.split(':', 1)
-        if len(parts) != 2:
-            continue
-            
-        key = parts[0].strip()
-        value = parts[1].strip()
-        
-        # GPS data
-        if 'gpslatitude' in line_lower and 'ref' not in line_lower:
-            critical['gps']['latitude'] = value
-        elif 'gpslongitude' in line_lower and 'ref' not in line_lower:
-            critical['gps']['longitude'] = value
-        elif 'gpsaltitude' in line_lower and 'ref' not in line_lower:
-            critical['gps']['altitude'] = value
-        elif 'gpsposition' in line_lower:
-            critical['gps']['position'] = value
-        elif 'gpsdatestamp' in line_lower:
-            critical['gps']['date'] = value
-        elif 'gpstimestamp' in line_lower:
-            critical['gps']['time'] = value
-            
-        # Camera info
-        elif 'make' in line_lower and 'model' not in line_lower:
-            critical['camera']['make'] = value
-        elif 'model' in line_lower and 'camera' in line_lower:
-            critical['camera']['model'] = value
-        elif 'lensmodel' in line_lower or 'lensid' in line_lower:
-            critical['camera']['lens'] = value
-        elif 'serialnumber' in line_lower:
-            critical['camera']['serial'] = value
-            
-        # DateTime info
-        elif 'datetimeoriginal' in line_lower:
-            critical['datetime']['original'] = value
-        elif 'createdate' in line_lower:
-            critical['datetime']['created'] = value
-        elif 'modifydate' in line_lower:
-            critical['datetime']['modified'] = value
-            
-        # Software/Editor info
-        elif 'software' in line_lower:
-            critical['software']['software'] = value
-        elif 'creatortool' in line_lower:
-            critical['software']['creator'] = value
-            
-        # Owner/Copyright info
-        elif 'artist' in line_lower or 'creator' in line_lower:
-            critical['owner']['artist'] = value
-        elif 'copyright' in line_lower:
-            critical['owner']['copyright'] = value
-        elif 'ownername' in line_lower:
-            critical['owner']['owner'] = value
-    
-    return critical
-
 def display_metadata(file_path, metadata, mode='detailed', save_output=False):
-    """Display extracted metadata"""
+    """Display extracted metadata with GPS debugging"""
     print(f"\n{GREEN}{'='*70}{RESET}")
     print(f"{BOLD}{CYAN}File:{RESET} {file_path}")
     print(f"{GREEN}{'='*70}{RESET}\n")
@@ -248,17 +264,25 @@ def display_metadata(file_path, metadata, mode='detailed', save_output=False):
         print(f"\n{RED}[!] No metadata could be extracted{RESET}")
         return
     
+    # DEBUG: Show all GPS fields found
+    gps_fields = debug_gps_fields(metadata)
+    
     # Extract critical information
     critical = extract_critical_info(metadata)
     
     # Display GPS data prominently
     if critical['gps']:
-        print(f"\n{RED}{BOLD}[!] GPS LOCATION DATA:{RESET}")
+        print(f"\n{RED}{BOLD}[!] GPS LOCATION DATA FOUND:{RESET}")
         for key, value in critical['gps'].items():
-            print(f"    {RED}{key.capitalize()}:{RESET} {value}")
+            print(f"    {RED}{key}:{RESET} {value}")
         
-        if 'position' in critical['gps']:
-            coords = critical['gps']['position'].replace(' ', '')
+        # Try to build Google Maps link if we have coordinates
+        if 'GPSLatitude' in critical['gps'] and 'GPSLongitude' in critical['gps']:
+            lat = critical['gps']['GPSLatitude']
+            lon = critical['gps']['GPSLongitude']
+            print(f"    {RED}Google Maps:{RESET} https://www.google.com/maps?q={lat},{lon}")
+        elif 'GPSPosition' in critical['gps']:
+            coords = critical['gps']['GPSPosition'].replace(' ', '')
             print(f"    {RED}Google Maps:{RESET} https://www.google.com/maps?q={coords}")
     
     # Display Camera info
@@ -312,31 +336,15 @@ def display_metadata(file_path, metadata, mode='detailed', save_output=False):
     
     # Save to file if requested
     if save_output:
-        abs_path = os.path.abspath(file_path)
-        output_file = f"{abs_path}_metadata_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        output_file = f"{file_info['absolute_path']}_metadata_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(f"SihmaSi Metadata Extraction Report\n")
                 f.write(f"{'='*70}\n")
-                f.write(f"File: {abs_path}\n")
-                f.write(f"File Hash (MD5): {file_info['hash']}\n")
+                f.write(f"File: {file_info['absolute_path']}\n")
                 f.write(f"Extracted: {datetime.now()}\n")
                 f.write(f"{'='*70}\n\n")
-                f.write(f"FILE INFORMATION:\n")
-                f.write(f"  Size: {file_info['size']:,} bytes\n")
-                f.write(f"  Extension: {file_info['extension']}\n")
-                f.write(f"  Modified: {file_info['modified']}\n")
-                f.write(f"  Created: {file_info['created']}\n\n")
-                
-                if critical['gps']:
-                    f.write(f"GPS LOCATION:\n")
-                    for key, value in critical['gps'].items():
-                        f.write(f"  {key.capitalize()}: {value}\n")
-                    f.write("\n")
-                
-                f.write(f"COMPLETE METADATA:\n")
-                f.write(f"{'-'*70}\n")
                 f.write(metadata)
             
             print(f"\n{GREEN}[+] Metadata saved to: {output_file}{RESET}")
@@ -345,90 +353,13 @@ def display_metadata(file_path, metadata, mode='detailed', save_output=False):
     
     print(f"\n{GREEN}{'='*70}{RESET}\n")
 
-def show_metadata_help():
-    """Show what metadata can be extracted"""
-    help_text = f"""
-{CYAN}{BOLD}METADATA TYPES THAT CAN BE EXTRACTED:{RESET}
-
-{RED}{BOLD}📍 GPS/Location Data:{RESET}
-  • GPS Latitude & Longitude (exact coordinates)
-  • GPS Altitude (elevation)
-  • GPS Date & Time stamps
-  • GPS Speed, Direction, Satellites
-  
-{MAGENTA}{BOLD}📷 Camera Information:{RESET}
-  • Camera Make & Model
-  • Lens Model & Serial Number
-  • Camera Serial Number
-  • Firmware Version
-  
-{CYAN}{BOLD}⚙️ Photo Settings (EXIF):{RESET}
-  • ISO Speed, Aperture (F-stop)
-  • Shutter Speed, Exposure Time
-  • White Balance, Metering Mode
-  • Flash Settings, Focus Mode
-  • Focal Length, Zoom
-  
-{YELLOW}{BOLD}🖼️ Image Properties:{RESET}
-  • Image Width & Height (resolution)
-  • Color Space, Bit Depth
-  • Compression, Quality
-  • Orientation, Thumbnail
-  
-{BLUE}{BOLD}📅 Date & Time:{RESET}
-  • Date/Time Original (when photo taken)
-  • Create Date, Modify Date
-  • Digitized Date
-  • Time Zone information
-  
-{GREEN}{BOLD}💻 Software/Editor Info:{RESET}
-  • Software used (Photoshop, GIMP, etc.)
-  • Creator Tool, History
-  • Edit count, Processing applied
-  
-{MAGENTA}{BOLD}👤 Owner/Copyright:{RESET}
-  • Artist/Photographer name
-  • Copyright information
-  • Owner name, Contact info
-  • Usage rights, Credits
-  
-{CYAN}{BOLD}🎥 Video Specific (for videos):{RESET}
-  • Duration, Frame Rate (FPS)
-  • Video Codec, Audio Codec
-  • Bitrate, Resolution
-  • Handler, Encoder
-  
-{YELLOW}{BOLD}📝 IPTC/XMP Metadata:{RESET}
-  • Keywords, Caption, Description
-  • Category, Subject, Scene
-  • City, State, Country
-  • Event, Instructions
-  
-{RED}{BOLD}🔧 Technical Data:{RESET}
-  • File Format, MIME Type
-  • Encoding, Profile
-  • Thumbnail image data
-  • Color Profile (ICC)
-  • Manufacturer Notes (MakerNotes)
-
-{GREEN}Note: Not all files contain all metadata types. It depends on:
-  • Device used (phone, camera, scanner)
-  • Settings enabled (GPS, location services)
-  • Post-processing (editing may strip data)
-  • File format (JPG retains more than PNG)
-{RESET}
-"""
-    print(help_text)
-
 def main():
     """Main function"""
     print_banner()
     
-    # Check dependencies
     if not check_dependencies():
         sys.exit(1)
     
-    # Parse arguments
     if len(sys.argv) < 2:
         print(f"{YELLOW}Usage:{RESET}")
         print(f"  python3 sihmasi.py <file_path> [options]")
@@ -436,32 +367,21 @@ def main():
         print(f"  -s, --save       Save metadata to a text file")
         print(f"  -r, --raw        Show raw unorganized output")
         print(f"  -d, --detailed   Show organized detailed output (default)")
-        print(f"  -h, --help       Show what metadata can be extracted")
         print(f"\n{YELLOW}Examples:{RESET}")
         print(f"  python3 sihmasi.py image.jpg")
-        print(f"  python3 sihmasi.py video.mp4 --save")
-        print(f"  python3 sihmasi.py photo.png -s -r")
-        print(f"  python3 sihmasi.py --help\n")
+        print(f"  python3 sihmasi.py photo.png -s\n")
         sys.exit(1)
-    
-    # Show help
-    if '--help' in sys.argv or '-h' in sys.argv:
-        show_metadata_help()
-        sys.exit(0)
     
     file_path = sys.argv[1]
     save_output = '--save' in sys.argv or '-s' in sys.argv
     raw_mode = '--raw' in sys.argv or '-r' in sys.argv
     mode = 'raw' if raw_mode else 'detailed'
     
-    # Verify file exists before processing
     if not os.path.exists(file_path):
         print(f"{RED}[!] Error: File '{file_path}' does not exist{RESET}")
         sys.exit(1)
     
-    # Extract and display metadata
-    print(f"{BLUE}[*] Extracting ALL metadata from: {os.path.abspath(file_path)}{RESET}")
-    print(f"{BLUE}[*] Using maximum extraction mode (including binary and unknown tags){RESET}\n")
+    print(f"{BLUE}[*] Extracting metadata from: {os.path.abspath(file_path)}{RESET}\n")
     
     metadata = extract_metadata_detailed(file_path)
     
