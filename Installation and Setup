@@ -1,0 +1,7 @@
+sudo apt-get update
+sudo apt-get install libimage-exiftool-perl
+chmod +x sihmasi.py
+python3 sihmasi.py image.jpg
+python3 sihmasi.py photo.png --save
+# or
+python3 sihmasi.py video.mp4 -s
